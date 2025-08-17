@@ -9,10 +9,13 @@
   "scripts": {
     "build": "echo 'No build step required'",
     "start": "node bin/siteclone.js",
-    "demo:vscode": "node bin/siteclone.js https://code.visualstudio.com --out dist/vscode --max-pages 300 --serve 4173 --open",
-    "demo:github": "node bin/siteclone.js https://github.com --out dist/github --max-pages 500 --serve 4174 --open",
-    "demo:piyush": "node bin/siteclone.js https://piyushgarg.dev --out dist/piyush --max-pages 50 --serve 4175 --open",
-    "demo:codeoptimalsolutions": "node bin/siteclone.js https://codeoptimalsolutions.com/ --out dist/codeoptimalsolutions --max-pages 50 --serve 4176 --open"
+    "demo:vscode": "node bin/siteclone.js https://code.visualstudio.com --out dist/vscode --max-pages 50 --serve 4173 --open",
+    "demo:github": "node bin/siteclone.js https://github.com --out dist/github --max-pages 30 --serve 4174 --open",
+    "demo:piyush": "node bin/siteclone.js https://piyushgarg.dev --out dist/piyush --max-pages 25 --serve 4175 --open",
+    "demo:hitesh": "node bin/siteclone.js https://hitesh.ai --out dist/hitesh --max-pages 40 --serve 4176 --open",
+    "clone:small": "node bin/siteclone.js $URL --out dist/small-site --max-pages 10 --serve 3000",
+    "clone:medium": "node bin/siteclone.js $URL --out dist/medium-site --max-pages 50 --serve 3001",
+    "clone:large": "node bin/siteclone.js $URL --out dist/large-site --max-pages 200 --serve 3002"
   },
   "keywords": [],
   "author": "",

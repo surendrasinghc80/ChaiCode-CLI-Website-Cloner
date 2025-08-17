@@ -58,6 +58,20 @@ const argv = yargs(hideBin(process.argv))
   .help().argv;
 
 const url = argv._[0];
+
+// Validate URL
+if (!url) {
+  console.error("❌ Error: Website URL is required");
+  console.log("Usage: siteclone <url> [options]");
+  console.log("Example: siteclone https://example.com --out dist/example");
+  process.exit(1);
+}
+
+if (!url.startsWith('http://') && !url.startsWith('https://')) {
+  console.error("❌ Error: URL must start with http:// or https://");
+  process.exit(1);
+}
+
 const outDir = path.resolve(argv.out);
 
 await crawlAndClone({
