@@ -57,7 +57,7 @@ npm run demo:vscode          # Clone VS Code website (50 pages)
 npm run demo:github          # Clone GitHub (30 pages)
 npm run demo:piyush          # Clone piyushgarg.dev (25 pages)
 npm run demo:codeoptimalsolutions  # Clone codeoptimalsolutions.com (40 pages)
-npm run demo:100xdevs        # Clone 100xdevs app (20 pages)
+npm run demo:hitesh          # Clone hitesh.ai app (40 pages)
 ```
 
 ### Method 4: Template Scripts by Size
@@ -66,7 +66,7 @@ npm run demo:100xdevs        # Clone 100xdevs app (20 pages)
 # For small sites (10 pages max)
 URL=https://example.com npm run clone:small
 
-# For medium sites (50 pages max)  
+# For medium sites (50 pages max)
 URL=https://example.com npm run clone:medium
 
 # For large sites (200 pages max)
@@ -132,7 +132,7 @@ Create a script file `clone-sites.sh`:
 #!/bin/bash
 # Clone multiple sites with different page limits
 node bin/siteclone.js https://site1.com --out dist/site1 --max-pages 50
-node bin/siteclone.js https://site2.com --out dist/site2 --max-pages 30  
+node bin/siteclone.js https://site2.com --out dist/site2 --max-pages 30
 node bin/siteclone.js https://site3.com --out dist/site3 --max-pages 100
 
 # Or use the template scripts

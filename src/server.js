@@ -1,5 +1,23 @@
 import express from "express";
-import open from "open";
+import { spawn } from "child_process";
+
+function openUrl(url) {
+  try {
+    if (process.platform === "win32") {
+      // Windows: use start via cmd
+      spawn("cmd", ["/c", "start", '""', url], {
+        detached: true,
+        stdio: "ignore",
+      });
+    } else if (process.platform === "darwin") {
+      spawn("open", [url], { detached: true, stdio: "ignore" });
+    } else {
+      spawn("xdg-open", [url], { detached: true, stdio: "ignore" });
+    }
+  } catch (e) {
+    // best-effort; ignore
+  }
+}
 
 export async function startServer({ root, port = 4173, openBrowser = false }) {
   const app = express();
@@ -14,7 +32,7 @@ export async function startServer({ root, port = 4173, openBrowser = false }) {
   const url = `http://localhost:${port}/`;
   if (openBrowser) {
     try {
-      await open(url);
+      openUrl(url);
     } catch {}
   }
   process.on("SIGINT", () => server.close(() => process.exit(0)));

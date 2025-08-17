@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -67,24 +68,31 @@ if (!url) {
   process.exit(1);
 }
 
-if (!url.startsWith('http://') && !url.startsWith('https://')) {
+if (!url.startsWith("http://") && !url.startsWith("https://")) {
   console.error("❌ Error: URL must start with http:// or https://");
   process.exit(1);
 }
 
 const outDir = path.resolve(argv.out);
 
-await crawlAndClone({
-  startUrl: url,
-  outDir,
-  maxPages: argv["max-pages"],
-  sameOriginOnly: argv["same-origin"],
-  concurrency: argv.concurrency,
-  timeout: argv.timeout,
-  respectRobots: argv["respect-robots"],
-});
+async function main() {
+  await crawlAndClone({
+    startUrl: url,
+    outDir,
+    maxPages: argv["max-pages"],
+    sameOriginOnly: argv["same-origin"],
+    concurrency: argv.concurrency,
+    timeout: argv.timeout,
+    respectRobots: argv["respect-robots"],
+  });
 
-if (argv.serve) {
-  const port = argv.serve;
-  await startServer({ root: outDir, port, openBrowser: argv.open });
+  if (argv.serve) {
+    const port = argv.serve;
+    await startServer({ root: outDir, port, openBrowser: argv.open });
+  }
 }
+
+main().catch((err) => {
+  console.error("Fatal error:", err);
+  process.exit(1);
+});
