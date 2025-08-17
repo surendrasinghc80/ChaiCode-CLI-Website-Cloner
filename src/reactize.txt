@@ -1,0 +1,395 @@
+// --- imports ---
+import fs from "node:fs/promises";
+import path from "node:path";
+import * as cheerio from "cheerio";
+
+// --- constants ---
+const SRC_DIR = path.resolve("src");
+const STYLES_DIR = path.join(SRC_DIR, "styles");
+const PAGES_DIR = path.join(SRC_DIR, "pages");
+const VENDOR_STYLES = path.join(STYLES_DIR, "vendor");
+
+// --- basic helpers ---
+async function ensureDir(dir) {
+  await fs.mkdir(dir, { recursive: true });
+}
+
+function capitalize(str) {
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+// --- DOM utils ---
+export function stripScripts(html) {
+  return String(html).replace(/<script[\s\S]*?<\/script>/gi, "");
+}
+
+// --- HTML/JSX fixes ---
+function fixAttributes($, el) {
+  $(el)
+    .find("*")
+    .each((_, node) => {
+      const attribs = node.attribs || {};
+      for (let [key, val] of Object.entries(attribs)) {
+        if (key === "class") {
+          $(node).attr("className", val).removeAttr("class");
+        } else if (key === "for") {
+          $(node).attr("htmlFor", val).removeAttr("for");
+        } else if (["checked", "disabled", "selected"].includes(key)) {
+          $(node).attr(key, "{true}");
+        }
+      }
+    });
+}
+
+// --- file walkers ---
+async function listFiles(root, predicate) {
+  const out = [];
+  async function walk(dir) {
+    const items = await fs.readdir(dir, { withFileTypes: true });
+    for (const it of items) {
+      const p = path.join(dir, it.name);
+      if (it.isDirectory()) await walk(p);
+      else if (!predicate || predicate(p)) out.push(p);
+    }
+  }
+  await walk(root);
+  return out;
+}
+
+// --- scaffold writer ---
+async function writeScaffold(root, projectName) {
+  const pkg = {
+    name: projectName,
+    private: true,
+    version: "0.0.1",
+    type: "module",
+    scripts: {
+      dev: "vite",
+      build: "vite build",
+      preview: "vite preview",
+    },
+    dependencies: {
+      react: "^18.3.1",
+      "react-dom": "^18.3.1",
+      "react-router-dom": "^6.26.2",
+    },
+    devDependencies: {
+      vite: "^5.4.0",
+      "@vitejs/plugin-react": "^4.3.1",
+    },
+  };
+  await writeFile(root, "package.json", JSON.stringify(pkg, null, 2));
+  await writeFile(root, "index.html", viteIndexHtml(projectName));
+  await writeFile(root, "vite.config.js", viteConfig());
+  await fs.mkdir(path.join(root, "public"), { recursive: true });
+  await fs.mkdir(path.join(root, "src/components/layout"), { recursive: true });
+  await fs.mkdir(path.join(root, "src/components/common"), { recursive: true });
+  await fs.mkdir(path.join(root, "src/components/widgets"), {
+    recursive: true,
+  });
+  await fs.mkdir(path.join(root, "src/pages"), { recursive: true });
+  await fs.mkdir(path.join(root, "src/services"), { recursive: true });
+  await fs.mkdir(path.join(root, "src/hooks"), { recursive: true });
+  await fs.mkdir(path.join(root, "src/utils"), { recursive: true });
+  await fs.mkdir(path.join(root, "src/styles"), { recursive: true });
+}
+
+async function writeFile(root, rel, content) {
+  const full = path.join(root, rel);
+  await fs.mkdir(path.dirname(full), { recursive: true });
+  await fs.writeFile(full, content, "utf8");
+}
+
+async function writeComponent(root, rel, code) {
+  await writeFile(root, "src/" + rel, code);
+}
+
+// --- html loading + parsing ---
+async function loadHtml(file) {
+  const html = await fs.readFile(file, "utf8");
+  return cheerio.load(html);
+}
+
+async function collectHeadInfo(htmlFile) {
+  const $ = await loadHtml(htmlFile);
+
+  const cssLinks = $('link[rel="stylesheet"]')
+    .map((_, el) => $(el).attr("href"))
+    .get()
+    .filter(Boolean);
+
+  const inlineStyles = $("style")
+    .map((_, el) => $(el).html())
+    .get();
+
+  const htmlAttrs = $("html")[0]?.attribs || {};
+  const bodyAttrs = $("body")[0]?.attribs || {};
+
+  return { cssLinks, inlineStyles, htmlAttrs, bodyAttrs };
+}
+
+async function extractLayout(indexFile) {
+  const $ = await loadHtml(indexFile);
+  const header = $(
+    "header, [role='banner'], .site-header, .header, .topbar, .navbar"
+  ).first();
+  const nav = $("nav, .navbar, .menu, .navigation").first();
+  const footer = $(
+    "footer, [role='contentinfo'], .site-footer, .footer"
+  ).first();
+  return {
+    header: header.length ? header.html() : "",
+    nav: nav.length ? nav.html() : header.length ? header.html() : "",
+    footer: footer.length ? footer.html() : "",
+  };
+}
+
+function removeLayout($) {
+  $("header, [role='banner'], .site-header, .header, .topbar, .navbar")
+    .first()
+    .remove();
+  $("nav, .navbar, .menu, .navigation").first().remove();
+  $("footer, [role='contentinfo'], .site-footer, .footer").first().remove();
+}
+
+// --- codegen templates ---
+function viteIndexHtml(projectName) {
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset='utf-8' />
+    <meta name='viewport' content='width=device-width, initial-scale=1' />
+    <title>${escapeHtml(projectName)}</title>
+    <link rel='stylesheet' href='/src/styles/globals.css' />
+  </head>
+  <body>
+    <div id='root'></div>
+    <script type='module' src='/src/index.jsx'></script>
+  </body>
+</html>`;
+}
+
+function viteConfig() {
+  return `import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+export default defineConfig({ plugins: [react()] })\n`;
+}
+
+function indexFileReact() {
+  return `import React from 'react'
+import { createRoot } from 'react-dom/client'
+import App from './App.jsx'
+import './styles/globals.css'
+
+const root = createRoot(document.getElementById('root'))
+root.render(<App />)\n`;
+}
+
+function appFile(routes) {
+  const routeLines = routes
+    .map((r) => `          <Route path='${r.path}' element={<${r.name} />} />`)
+    .join("\n");
+  const imports = routes
+    .map((r) => `import ${r.name} from './pages/${r.name}.jsx'`)
+    .join("\n");
+  return `import React from 'react'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import Layout from './components/layout/Layout.jsx'
+${imports}
+
+export default function App(){
+  return (
+    <BrowserRouter>
+      <Layout>
+        <Routes>
+${routeLines}
+          <Route path='*' element={<Navigate to='/' replace />} />
+        </Routes>
+      </Layout>
+    </BrowserRouter>
+  )
+}\n`;
+}
+
+function jsxComponent(name, html) {
+  const safe = (html || "").trim();
+  return `import React from 'react'
+export default function ${name}(){
+  return <div dangerouslySetInnerHTML={{ __html: ${JSON.stringify(safe)} }} />
+}\n`;
+}
+
+function layoutWrapper() {
+  return `import React from 'react'
+import Navbar from './Navbar.jsx'
+import Footer from './Footer.jsx'
+export default function Layout({ children }){
+  return (
+    <div className='app'>
+      <Navbar />
+      <main>{children}</main>
+      <Footer />
+    </div>
+  )
+}\n`;
+}
+
+function pageComponent(name, html) {
+  const safe = (html || "").trim();
+  return `import React from 'react'
+export default function ${name}(){
+  return (
+    <div className='page ${name}'>
+      <div dangerouslySetInnerHTML={{ __html: ${JSON.stringify(safe)} }} />
+    </div>
+  )
+}\n`;
+}
+
+function routeFromHtml(relPath) {
+  let p = relPath.replace(/\\/g, "/");
+  if (p.endsWith("index.html")) p = p.slice(0, -"index.html".length);
+  else if (p.endsWith(".html")) p = p.slice(0, -5);
+  if (!p.startsWith("/")) p = "/" + p;
+  if (p === "/") return "/";
+  return p.replace(/\/\/+/, "/");
+}
+
+function componentNameFromRoute(route) {
+  if (route === "/") return "Home";
+  const parts = route.split("/").filter(Boolean);
+  return parts
+    .map((s) =>
+      s
+        .replace(/[^a-zA-Z0-9]/g, " ")
+        .replace(/\b\w/g, (m) => m.toUpperCase())
+        .replace(/\s+/g, "")
+    )
+    .join("");
+}
+
+// --- styles ---
+async function ensureStyles(root) {
+  const globals = `/* Global styles */\n:root { --app-bg: #fff; }\nbody { margin: 0; background: var(--app-bg); }\nmain { min-height: 60vh; }\n`;
+  await writeFile(root, "src/styles/globals.css", globals);
+  await writeFile(
+    root,
+    "src/styles/layout.css",
+    "/* layout-specific rules */\n"
+  );
+  await writeFile(
+    root,
+    "src/styles/components.css",
+    "/* component-specific rules */\n"
+  );
+}
+
+// --- main async pipeline ---
+export async function reactize({ rawRoot, reactRoot, projectName }) {
+  await fs.mkdir(reactRoot, { recursive: true });
+
+  const htmlFiles = await listFiles(rawRoot, (p) => p.endsWith(".html"));
+  const assetFiles = await listFiles(rawRoot, (p) => !p.endsWith(".html"));
+
+  await writeScaffold(reactRoot, projectName);
+
+  // copy assets
+  for (const f of assetFiles) {
+    const rel = path.relative(rawRoot, f);
+    const dest = path.join(reactRoot, "public", rel).replace(/\\/g, "/");
+    await fs.mkdir(path.dirname(dest), { recursive: true });
+    await fs.copyFile(f, dest);
+  }
+
+  // layout
+  const indexFile =
+    htmlFiles.find((p) => p.endsWith("index.html")) || htmlFiles[0];
+  const layout = indexFile
+    ? await extractLayout(indexFile)
+    : { header: "", nav: "", footer: "" };
+
+  await writeComponent(
+    reactRoot,
+    "components/layout/Navbar.jsx",
+    jsxComponent("Navbar", layout.nav || layout.header)
+  );
+  await writeComponent(
+    reactRoot,
+    "components/layout/Footer.jsx",
+    jsxComponent("Footer", layout.footer)
+  );
+  await writeComponent(
+    reactRoot,
+    "components/layout/Layout.jsx",
+    layoutWrapper()
+  );
+
+  const headInfo = indexFile
+    ? await collectHeadInfo(indexFile)
+    : { cssLinks: [], inlineStyles: [], htmlAttrs: {}, bodyAttrs: {} };
+
+  // build pages
+  const routes = [];
+  for (const file of htmlFiles) {
+    const rel = path.relative(rawRoot, file).replace(/\\/g, "/");
+    const routePath = routeFromHtml(rel);
+    const name = componentNameFromRoute(routePath);
+
+    const $ = await loadHtml(file);
+    removeLayout($);
+
+    const main = $("main").first();
+    const contentHtml = (main.length ? main.html() : $("body").html()) || "";
+
+    const pageCode = pageComponent(name, contentHtml);
+    await writeComponent(reactRoot, `pages/${name}.jsx`, pageCode);
+    routes.push({ path: routePath, name });
+  }
+
+  await writeFile(reactRoot, "src/App.jsx", appFile(routes));
+  await writeFile(reactRoot, "src/index.jsx", indexFileReact());
+  await ensureStyles(reactRoot);
+
+  await writeFile(
+    reactRoot,
+    "src/services/index.js",
+    `// Add API clients here\nexport {};\n`
+  );
+  await writeFile(
+    reactRoot,
+    "src/hooks/useExample.js",
+    `import { useState } from 'react';\nexport function useExample(){ const [x,setX] = useState(0); return {x,setX}; }\n`
+  );
+  await writeFile(
+    reactRoot,
+    "src/utils/dom.js",
+    `export function stripScripts(html){ return String(html).replace(/<script[\\s\\S]*?<\\/script>/gi,''); }\n`
+  );
+}
+
+// --- legacy CLI (single page converter, optional) ---
+if (process.argv[1].endsWith("reactize.js")) {
+  const inputPath = process.argv[2];
+  if (!inputPath) {
+    console.error("Usage: node reactize.js <html-file-or-folder>");
+    process.exit(1);
+  }
+  (async () => {
+    const stats = await fs.stat(inputPath);
+    if (stats.isDirectory()) {
+      const files = await fs.readdir(inputPath);
+      for (const f of files.filter((x) => x.endsWith(".html"))) {
+        console.log("Found page:", f);
+      }
+    } else {
+      console.log("Found single file:", inputPath);
+    }
+  })();
+}
